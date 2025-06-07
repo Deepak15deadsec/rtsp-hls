@@ -28,6 +28,22 @@ class AppServer {
 
   init() {
     this.handleTranscriptionChange();
+    
+    // Add health check interval
+    setInterval(() => {
+      const stream = Stream.getInstance();
+      if (stream && stream.getStream()) {
+        // Check if stream is still running
+        const currentStatus = stream.getStatus();
+        if (currentStatus.found === false) {
+          console.log('Stream appears to be stuck, attempting to restart...');
+          stream.killStreamProcess();
+          setTimeout(() => {
+            Stream.getInstance().startStreamConversion('camera-first');
+          }, 2000);
+        }
+      }
+    }, 60000); // Check every minute
   }
 
   handleTranscriptionChange() {
@@ -49,8 +65,19 @@ class AppServer {
         });
       });
 
+      // Add ping-pong mechanism
+      ws.isAlive = true;
+      ws.on('pong', () => {
+        ws.isAlive = true;
+      });
+
       const pingInterval = setInterval(() => {
         if (ws.readyState === ws.OPEN) {
+          if (ws.isAlive === false) {
+            console.log('WebSocket connection terminated due to inactivity');
+            return ws.terminate();
+          }
+          ws.isAlive = false;
           ws.ping();
         } else {
           clearInterval(pingInterval);

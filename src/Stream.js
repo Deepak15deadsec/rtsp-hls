@@ -92,7 +92,12 @@ class Stream {
     const camUrl = camera == 'camera-first' ? config.rtspUrl : config.rtspUrlSecond;
 
     const streamProcess = ffmpeg(camUrl)
-      .inputOptions(['-rtsp_transport tcp'])
+      .inputOptions([
+        '-rtsp_transport tcp',
+        '-re',
+        '-analyzeduration 2147483647',
+        '-probesize 2147483647'
+      ])
       .addOptions(config.ffmpegOptions)
       .videoCodec(config.codecs.video)
       .audioCodec(config.codecs.audio)
@@ -106,6 +111,13 @@ class Stream {
         streamProcess.kill('SIGINT');
         clearInterval(this.data.intervalId);
         console.log('Stream ended due to error:', err.message);
+        
+        // Attempt to restart the stream after a brief delay
+        setTimeout(() => {
+          console.log('Attempting to restart stream...');
+          this.setStreamProcess(null);
+          this.startStreamConversion(camera);
+        }, 5000);
       })
       .on('start', (commandLine) => {
         console.log('Stream started', commandLine);
