@@ -100,6 +100,36 @@ Then open your browser at http://localhost:3000
 - `POST /api/auth/login` - User login
 - `GET /api/auth/verify` - Verify authentication
 
+## FFmpeg Pipeline
+
+The core of this application is the FFmpeg pipeline that converts RTSP streams to HLS format. The pipeline is optimized for low-latency streaming while maintaining good quality.
+
+```
+ffmpeg -rtsp_transport tcp -i {RTSP_URL} \
+  -c:v copy -c:a aac -ac 2 \
+  -f hls \
+  -hls_time 2 \
+  -hls_list_size 10 \
+  -hls_flags delete_segments+append_list \
+  -hls_segment_filename ./storage/hls/stream_%03d.ts \
+  ./storage/hls/playlist.m3u8
+```
+
+### Pipeline Parameters Explained
+
+- `-rtsp_transport tcp`: Uses TCP for RTSP transport (more reliable than UDP)
+- `-i {RTSP_URL}`: Input RTSP stream URL
+- `-c:v copy`: Copy video codec without re-encoding (reduces CPU usage and latency)
+- `-c:a aac -ac 2`: Convert audio to AAC with 2 channels
+- `-f hls`: Output format set to HLS
+- `-hls_time 2`: Duration of each segment in seconds (lower values reduce latency)
+- `-hls_list_size 10`: Number of segments to keep in the playlist
+- `-hls_flags delete_segments+append_list`: Delete old segments and append to playlist
+- `-hls_segment_filename`: Pattern for segment files
+- `./storage/hls/playlist.m3u8`: Output playlist file
+
+For recording, a separate FFmpeg process is used to save segments to MP4 files with proper encoding settings.
+
 ## License
 
 ISC
