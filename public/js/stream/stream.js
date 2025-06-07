@@ -67,12 +67,28 @@ export default class Stream extends Panel {
       // eslint-disable-next-line no-undef
       if (!this.hlsInstance) this.hlsInstance = new Hls({
         debug: false,
-        // Add retry and timeout configs
-        manifestLoadingMaxRetry: 5,
-        manifestLoadingRetryDelay: 1000,
-        manifestLoadingTimeOut: 10000,
-        levelLoadingTimeOut: 10000,
-        fragLoadingTimeOut: 20000
+        // Low latency optimizations
+        lowLatencyMode: true,
+        // Network optimizations
+        maxBufferSize: 5 * 1000 * 1000, // 5MB max buffer size
+        maxBufferLength: 10, // 10 seconds max buffer
+        maxMaxBufferLength: 30, // 30 seconds absolute max buffer
+        liveSyncDurationCount: 3, // Use fewer segments for synchronization
+        liveMaxLatencyDurationCount: 5, // Maximum latency allowed
+        maxLiveSyncPlaybackRate: 1.5, // Allow playback speedup to catch up
+        // Recovery strategies
+        manifestLoadingMaxRetry: 8,
+        manifestLoadingRetryDelay: 500, // Start with 500ms delay
+        manifestLoadingMaxRetryTimeout: 8000, // Max 8s retry delay
+        levelLoadingTimeOut: 8000,
+        fragLoadingTimeOut: 20000,
+        // Faster recovery on errors
+        backBufferLength: 30, // 30 seconds of backward buffer for seeking
+        appendErrorMaxRetry: 5,
+        enableWorker: true, // Use web workers for better performance
+        // Fast start
+        startLevel: -1, // Auto select starting level
+        startFragPrefetch: true, // Prefetch first fragment
       });
 
       if (this.endStreamBtn && this.videoWrapper) {
@@ -98,6 +114,26 @@ export default class Stream extends Panel {
             if (data.response && data.response.code === 404) {
               console.log('Stream file not found, will retry automatically');
             }
+          } else if (data.fatal) {
+            // Fatal errors require manual recovery
+            switch(data.type) {
+              case Hls.ErrorTypes.NETWORK_ERROR:
+                console.error('Fatal network error', data);
+                // Try to recover network error
+                this.hlsInstance.startLoad();
+                break;
+              case Hls.ErrorTypes.MEDIA_ERROR:
+                console.error('Fatal media error', data);
+                // Try to recover media error
+                this.hlsInstance.recoverMediaError();
+                break;
+              default:
+                // Cannot recover other fatal errors
+                console.error('Fatal error, cannot recover', data);
+                this.destroyAndResetPlayer();
+                this.showStream(); // Try to recreate the player
+                break;
+            }
           }
         });
         
@@ -109,8 +145,8 @@ export default class Stream extends Panel {
               hideElement([this.btnPlay]);
               showElement([this.btnStop]);
               
-              // Optionally unmute after successful autoplay
-              // this.video.muted = false;
+              // Start monitoring for stream stalls
+              this.startStallMonitoring();
             })
             .catch(error => {
               console.warn('Auto-play failed:', error);
@@ -121,6 +157,63 @@ export default class Stream extends Panel {
         });
       });
     }
+  }
+
+  // Add this method to destroy and reset the player
+  destroyAndResetPlayer() {
+    if (this.hlsInstance) {
+      this.hlsInstance.destroy();
+      this.hlsInstance = null;
+    }
+
+    if (this.stallCheckInterval) {
+      clearInterval(this.stallCheckInterval);
+      this.stallCheckInterval = null;
+    }
+  }
+
+  // Add stall monitoring to detect and recover from stalled playback
+  startStallMonitoring() {
+    if (this.stallCheckInterval) {
+      clearInterval(this.stallCheckInterval);
+    }
+
+    let lastPosition = this.video.currentTime;
+    let stallCount = 0;
+    
+    this.stallCheckInterval = setInterval(() => {
+      // Skip check if video is paused
+      if (this.video.paused) {
+        lastPosition = this.video.currentTime;
+        return;
+      }
+      
+      // If position hasn't changed and video should be playing, we might be stalled
+      if (this.video.currentTime === lastPosition && !this.video.paused && !this.video.ended) {
+        stallCount++;
+        console.log(`Possible stall detected (${stallCount}): Position unchanged at ${lastPosition}`);
+        
+        // After 3 consecutive stalls, try to recover
+        if (stallCount >= 3) {
+          console.log('Attempting to recover from stall');
+          
+          // Try seeking forward slightly
+          this.video.currentTime += 0.1;
+          
+          // If still stalled after multiple attempts, reload the player
+          if (stallCount >= 5) {
+            console.log('Multiple stalls detected, reloading player');
+            this.destroyAndResetPlayer();
+            this.showStream();
+            return;
+          }
+        }
+      } else {
+        // Reset stall counter if we're making progress
+        stallCount = 0;
+        lastPosition = this.video.currentTime;
+      }
+    }, 2000); // Check every 2 seconds
   }
 
   async checkStreamStatus() {

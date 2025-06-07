@@ -51,7 +51,12 @@
           </svg>
         </button>
 
-        <video id="video" autoplay muted playsinline>
+        <video id="video" autoplay muted playsinline
+               preload="auto"
+               x-webkit-airplay="allow"
+               x5-video-player-type="h5"
+               x5-video-player-fullscreen="true"
+               x5-video-orientation="portrait">
           <source src="hls/stream.m3u8" type="application/x-mpegURL" />
           Your browser does not support the video tag.
         </video>
