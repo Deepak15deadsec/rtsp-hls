@@ -99,7 +99,7 @@ class Stream {
           
           console.log(`Stream is ready with ${tsFiles.length} segments`);
           clearInterval(this.data.intervalId);
-          this.updateStatus(true, 'Transmisja online');
+          this.updateStatus(true, 'Stream online');
         } catch (err) {
           console.error('Error checking stream file:', err);
           // Continue checking
@@ -107,13 +107,13 @@ class Stream {
         }
       } else {
         console.log(`${hlsOutputFileName} not found in public/hls (attempt ${checkCount}/${maxChecks})`);
-        this.updateStatus(false, 'Ładowanie tramsmisji');
+        this.updateStatus(false, 'Loading stream...');
         
         // Stop checking after maximum attempts
         if (checkCount >= maxChecks) {
           console.log('Maximum check attempts reached. Stream may not be available.');
           clearInterval(this.data.intervalId);
-          this.updateStatus(false, 'Problem z transmisją');
+          this.updateStatus(false, 'Stream error');
           
           // Try restarting the stream
           if (this.data.streamProcess) {

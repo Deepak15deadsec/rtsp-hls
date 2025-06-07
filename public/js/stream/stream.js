@@ -232,10 +232,10 @@ export default class Stream extends Panel {
           this.showStream();
           this.startRecording();
         } else if (transcription.found === false) {
-          insertText(this.streamStatus, 'Ładowanie transmisji...');
+          insertText(this.streamStatus, 'Loading stream...');
           if (this.startStreamBtn) hideElement([this.startStreamBtn]);
         } else {
-          insertText(this.streamStatus, 'Transmisja offline');
+          insertText(this.streamStatus, 'Stream offline');
         }
       } catch (error) {
         console.error('Error fetching stream status:', error);
@@ -266,12 +266,12 @@ export default class Stream extends Panel {
         }
 
         showElement([this.videoWrapper]);
-        insertText(this.streamStatus, 'Transmisja online');
+        insertText(this.streamStatus, 'Stream online');
         this.recordingStatus && showElement([this.recordingStatus]);
         return;
       }
 
-      insertText(this.streamStatus, 'Transmisja offline');
+      insertText(this.streamStatus, 'Stream offline');
     } catch (error) {
       console.error('Error fetching stream status:', error);
       insertText(this.streamStatus, 'Error checking status.');
