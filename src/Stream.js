@@ -2,7 +2,6 @@ const ffmpeg = require('fluent-ffmpeg');
 const { ffmpegConfig, streamDirectory } = require('./config/config.js');
 const { checkDirectoryExists, cleanDirectory, createDirectory, findFile } = require('./helpers/index.js');
 const { clearInterval } = require('timers');
-const Transcription = require('./Transcription.js');
 
 class Stream {
   data = {
@@ -17,7 +16,6 @@ class Stream {
   static instance = null;
 
   constructor() {
-    this.transcription = new Transcription();
   }
 
   static getInstance() {
@@ -61,6 +59,8 @@ class Stream {
 
   checkFileStreamExists(hlsOutputDir, hlsOutputFileName) {
     const checkingTime = 1000;
+    let checkCount = 0;
+    const maxChecks = 60; // Limit checks to 60 attempts (60 seconds)
 
     // Check if codecs are defined in the configuration
     if (!ffmpegConfig.codecs || !ffmpegConfig.codecs.video || !ffmpegConfig.codecs.audio) {
@@ -70,21 +70,61 @@ class Stream {
     }
 
     this.data.intervalId = setInterval(async () => {
+      checkCount++;
       const fileStreamExists = await findFile(hlsOutputDir, hlsOutputFileName);
 
       if (fileStreamExists) {
         console.log(`${hlsOutputFileName} found in public/hls`);
-
-        clearInterval(this.data.intervalId);
-        this.updateStatus(true, 'Transmisja online');
-
-        this.transcription.captureAndTranscribeAudio(ffmpegConfig.rtspUrl);
-
-        return;
+        
+        // Additional check - verify the file has content
+        try {
+          const fs = require('fs');
+          const path = require('path');
+          const filePath = path.join(hlsOutputDir, hlsOutputFileName);
+          const stats = fs.statSync(filePath);
+          
+          if (stats.size === 0) {
+            console.log(`${hlsOutputFileName} exists but is empty, waiting for content...`);
+            return;
+          }
+          
+          // Check if we have at least one ts segment file
+          const files = fs.readdirSync(hlsOutputDir);
+          const tsFiles = files.filter(file => file.endsWith('.ts'));
+          
+          if (tsFiles.length === 0) {
+            console.log(`No .ts segment files found yet, waiting...`);
+            return;
+          }
+          
+          console.log(`Stream is ready with ${tsFiles.length} segments`);
+          clearInterval(this.data.intervalId);
+          this.updateStatus(true, 'Transmisja online');
+        } catch (err) {
+          console.error('Error checking stream file:', err);
+          // Continue checking
+          return;
+        }
+      } else {
+        console.log(`${hlsOutputFileName} not found in public/hls (attempt ${checkCount}/${maxChecks})`);
+        this.updateStatus(false, 'Ładowanie tramsmisji');
+        
+        // Stop checking after maximum attempts
+        if (checkCount >= maxChecks) {
+          console.log('Maximum check attempts reached. Stream may not be available.');
+          clearInterval(this.data.intervalId);
+          this.updateStatus(false, 'Problem z transmisją');
+          
+          // Try restarting the stream
+          if (this.data.streamProcess) {
+            console.log('Attempting to restart stream conversion...');
+            this.killStreamProcess();
+            setTimeout(() => {
+              this.startStreamConversion('camera-first');
+            }, 2000);
+          }
+        }
       }
-
-      console.log(`${hlsOutputFileName} not found in public/hls`);
-      this.updateStatus(false, 'Ładowanie tramsmisji');
     }, checkingTime);
   }
 
@@ -94,9 +134,7 @@ class Stream {
     const streamProcess = ffmpeg(camUrl)
       .inputOptions([
         '-rtsp_transport tcp',
-        '-re',
-        '-analyzeduration 2147483647',
-        '-probesize 2147483647'
+        '-re'
       ])
       .addOptions(config.ffmpegOptions)
       .videoCodec(config.codecs.video)
@@ -139,7 +177,6 @@ class Stream {
 
   killStreamProcess() {
     if (this.data.streamProcess) {
-      this.transcription.destroy();
       this.data.streamProcess.kill('SIGINT');
       this.setStreamProcess(null);
       this.updateStatus(null, 'stream ended');

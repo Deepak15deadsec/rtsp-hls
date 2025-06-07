@@ -56,8 +56,6 @@ const ffmpegConfig = {
     '-reconnect_at_eof 1',
     '-reconnect_streamed 1',
     '-reconnect_delay_max 5',
-    '-timeout 5000000',
-    '-stimeout 5000000',
   ],
   codecs: {
     video: 'libx264',

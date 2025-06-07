@@ -9,7 +9,6 @@ export default class Stream extends Panel {
     this.btnStop = document.getElementById('btn-stop');
     this.checkStreamOnStartPage();
     this.initEventListeners();
-    this.initWebSocket();
   }
 
   get radioValueStorage() {
@@ -21,21 +20,6 @@ export default class Stream extends Panel {
     if (this.btnFullscreen) this.btnFullscreen.addEventListener('click', () => this.toggleFullScreen());
     if (this.btnPlay) this.btnPlay.addEventListener('click', () => this.playStopVideo());
     if (this.btnStop) this.btnStop.addEventListener('click', () => this.playStopVideo());
-  }
-
-  initWebSocket() {
-    this.ws = new WebSocket('ws://localhost:3000');
-
-    this.ws.onerror = (error) => console.error('WebSocket Error:', error);
-    this.ws.onopen = () => console.log('WebSocket is open now.');
-    this.ws.onclose = () => console.log('WebSocket is closed now.');
-    this.ws.onmessage = (event) => {
-      const transcription = event.data;
-
-      if (transcription.size === 0) return;
-
-      insertText(this.captions, transcription);
-    };
   }
 
   toggleFullScreen() {
@@ -81,7 +65,15 @@ export default class Stream extends Panel {
     // eslint-disable-next-line no-undef
     if (Hls.isSupported()) {
       // eslint-disable-next-line no-undef
-      if (!this.hlsInstance) this.hlsInstance = new Hls();
+      if (!this.hlsInstance) this.hlsInstance = new Hls({
+        debug: false,
+        // Add retry and timeout configs
+        manifestLoadingMaxRetry: 5,
+        manifestLoadingRetryDelay: 1000,
+        manifestLoadingTimeOut: 10000,
+        levelLoadingTimeOut: 10000,
+        fragLoadingTimeOut: 20000
+      });
 
       if (this.endStreamBtn && this.videoWrapper) {
         showElement([this.endStreamBtn, this.videoWrapper]);
@@ -91,12 +83,43 @@ export default class Stream extends Panel {
         hideElement([this.startStreamBtn]);
       }
 
+      // Set video to muted to help with autoplay policies
+      this.video.muted = true;
+      
       this.hlsInstance.attachMedia(this.video);
       // eslint-disable-next-line no-undef
-      this.hlsInstance.on(Hls.Events.MEDIA_ATTACHED, () => this.hlsInstance.loadSource('/hls/stream.m3u8'));
-
-      hideElement([this.btnStop]);
-      showElement([this.btnPlay]);
+      this.hlsInstance.on(Hls.Events.MEDIA_ATTACHED, () => {
+        this.hlsInstance.loadSource('/hls/stream.m3u8');
+        
+        // Add error handling for manifest loading
+        this.hlsInstance.on(Hls.Events.ERROR, (event, data) => {
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            console.warn('Network error:', data.details);
+            if (data.response && data.response.code === 404) {
+              console.log('Stream file not found, will retry automatically');
+            }
+          }
+        });
+        
+        // Auto-play when media is loaded
+        this.hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+          this.video.play()
+            .then(() => {
+              // Video is playing, update UI
+              hideElement([this.btnPlay]);
+              showElement([this.btnStop]);
+              
+              // Optionally unmute after successful autoplay
+              // this.video.muted = false;
+            })
+            .catch(error => {
+              console.warn('Auto-play failed:', error);
+              // If autoplay fails (browser policy), show play button
+              hideElement([this.btnStop]);
+              showElement([this.btnPlay]);
+            });
+        });
+      });
     }
   }
 

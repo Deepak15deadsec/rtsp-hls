@@ -2,7 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const Server = require('./src/Server.js');
 const Stream = require('./src/Stream.js');
-const WebSocket = require('ws');
+// Remove WebSocket import if not needed for other functionality
+// const WebSocket = require('ws');
 
 const INFINITY_LISTENERS = 0;
 
@@ -19,15 +20,17 @@ class AppServer {
       }
     });
 
-    this.wss = new WebSocket.Server({ server: this.serverInstance });
-    this.currentTranscription = '';
-    this.lastWordIndex = 0;
+    // Remove WebSocket server setup
+    // this.wss = new WebSocket.Server({ server: this.serverInstance });
+    // this.currentTranscription = '';
+    // this.lastWordIndex = 0;
 
     this.init();
   }
 
   init() {
-    this.handleTranscriptionChange();
+    // Remove transcription change handler
+    // this.handleTranscriptionChange();
     
     // Add health check interval
     setInterval(() => {
@@ -46,6 +49,8 @@ class AppServer {
     }, 60000); // Check every minute
   }
 
+  // Remove the entire transcription handler method
+  /*
   handleTranscriptionChange() {
     this.wss.on('connection', (ws) => {
       const stream = Stream.getInstance()?.transcription ?? '';
@@ -91,6 +96,7 @@ class AppServer {
       console.log('WebSocket error', error);
     });
   }
+  */
 }
 
 // eslint-disable-next-line no-unused-vars
